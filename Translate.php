@@ -250,7 +250,7 @@ class Translate extends Api
 
         $createtime = time();
 
-        $ai_url = 'http://8.155.162.131';
+        $ai_url = 'http://10.0.0.10';
         $ai_translate_port = Config::get('ai.ai_translate_port');
         $url = $ai_url . ':' . $ai_translate_port . '/translate';
 

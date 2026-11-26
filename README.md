@@ -20,6 +20,20 @@ An embedded translation device records voice and streams it to the cloud over ho
 - **Translation pipeline** (`internal/pipeline/`, `internal/ai/`, `internal/baidu/`, `internal/oss/`): when enabled, uploaded audio goes OSS → AI translation → text-to-speech → OPUS encoding → serialized per-device TTS queue → device playback. Each external provider can be disabled independently; the gateway still works as a pure connection/forwarding layer.
 - **Observability**: structured `zap` logging with per-session diagnostics (drop reasons: CRC / dedup / accept / other), a browser-based test console (`web/test-console`), and a health endpoint.
 
+## Operator console
+
+A React/Vite front-end in `web/test-console/` lets an engineer drive the whole protocol from a browser instead of hand-crafting packets: activate a device and refresh its token, open the WSS session, send location/audio twin-frames, trigger retransmission, push commands and TTS downlink, inspect live logs, and audit per-device uploads with drop-reason counters and playable original audio. It also renders the protocol docs from `docs/` in-page.
+
+Screenshots (sensitive values redacted):
+
+| Function | View |
+|---|---|
+| Connection / command console | ![Console](docs/screenshots/01-test-console.png) |
+| In-page protocol documentation | ![Docs](docs/screenshots/02-protocol-docs.png) |
+| Audio diagnostics — drop reasons & replay | ![Diagnostics](docs/screenshots/03-audio-diagnostics.png) |
+
+To run it locally: `cd web/test-console && npm install && npm run dev`, then open `http://localhost:5173`. It connects to the gateway on the same host by default; set `VITE_GATEWAY_ORIGIN` in `.env.local` to point at another instance. No credentials are required to view the UI — activation and commands still require a running gateway.
+
 ## Architecture
 
 ```

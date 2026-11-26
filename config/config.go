@@ -119,7 +119,7 @@ type BaiduConfig struct {
 // AIConfig 宠物语音翻译 AI 服务（对齐 Translate.php translateAll）。
 type AIConfig struct {
 	Enabled bool `mapstructure:"enabled"`
-	// BaseURL AI 主机，如 http://8.155.162.131（可不带端口）
+	// BaseURL AI 主机，如 http://10.0.0.10（可不带端口）
 	BaseURL string `mapstructure:"base_url"`
 	// TranslatePort 翻译服务端口；与 base_url 拼成 base_url:port/translate（PHP: ai_translate_port）
 	// 若 base_url 已含端口（如 :6001），本项可留 0 不覆盖。
@@ -127,7 +127,7 @@ type AIConfig struct {
 	Timeout       time.Duration `mapstructure:"timeout"`
 }
 
-// TranslateEndpoint 拼出完整翻译地址，如 http://8.155.162.131:6001/translate。
+// TranslateEndpoint 拼出完整翻译地址，如 http://10.0.0.10:6001/translate。
 func (c AIConfig) TranslateEndpoint() string {
 	base := strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
 	if base == "" {

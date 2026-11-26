@@ -10,18 +10,18 @@ func TestAIConfigTranslateEndpoint(t *testing.T) {
 	}{
 		{
 			name: "base+port",
-			cfg:  AIConfig{BaseURL: "http://8.155.162.131", TranslatePort: 6001},
-			want: "http://8.155.162.131:6001/translate",
+			cfg:  AIConfig{BaseURL: "http://10.0.0.10", TranslatePort: 6001},
+			want: "http://10.0.0.10:6001/translate",
 		},
 		{
 			name: "base already has port",
-			cfg:  AIConfig{BaseURL: "http://8.155.162.131:6001", TranslatePort: 6001},
-			want: "http://8.155.162.131:6001/translate",
+			cfg:  AIConfig{BaseURL: "http://10.0.0.10:6001", TranslatePort: 6001},
+			want: "http://10.0.0.10:6001/translate",
 		},
 		{
 			name: "trailing slash",
-			cfg:  AIConfig{BaseURL: "http://8.155.162.131/", TranslatePort: 6001},
-			want: "http://8.155.162.131:6001/translate",
+			cfg:  AIConfig{BaseURL: "http://10.0.0.10/", TranslatePort: 6001},
+			want: "http://10.0.0.10:6001/translate",
 		},
 		{
 			name: "empty",
