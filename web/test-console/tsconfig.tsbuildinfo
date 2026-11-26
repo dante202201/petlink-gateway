@@ -1,0 +1,1 @@
+{"root":["./src/adminapp.tsx","./src/adminpage.tsx","./src/app.tsx","./src/audiodiagpage.tsx","./src/docspage.tsx","./src/firmwarehistorypage.tsx","./src/otalogspage.tsx","./src/onlinedevicespage.tsx","./src/admin-main.tsx","./src/api.ts","./src/crc.ts","./src/main.tsx","./src/vite-env.d.ts"],"version":"5.9.3"}

@@ -1,0 +1,73 @@
+设备连上我们的WebSocket之后，会收到一条ota_update命令就开始下载升级。
+
+网关实际下发是嵌套格式（推荐，与其它 cmd 一致），force 用布尔 true/false，不要再用 0/1：
+
+{
+  "type": "cmd",
+  "cmd": "ota_update",
+  "data": {
+    "url": "固件直链地址",
+    "version": "新版本号比如2.1.3",
+    "force": true,
+    "size": 固件大小字节数,
+    "md5": "32位md5值",
+    "accept_ranges": true
+  }
+}
+
+可选字段 download_url：网关带鉴权的下载地址；默认直链模式可以不传，设备走 url。
+
+扁平写法（历史约定，字段含义相同）也可以：
+
+{ "sn": "设备序列号", "type": "ota_update", "cmd": "ota_update", "url": "固件直链地址", "version": "新版本号比如5.7.0", "size": 固件大小字节数, "md5": "32位md5值", "force": false, "download_url": "断点续传接口地址（可选）", "accept_ranges": true }
+
+先说最简单的测试方法，你们不用走版本比对那套，直接把force设为true，这样不管设备现在是啥版本都会触发下载。url给一个我们确认能访问到的固件直链，size和md5填上，设备下载完会自动校验这两个值，对不上就直接失败重启不刷写。
+
+download_url那个字段是断点续传的，如果填了我们就优先走这个地址，会自动带上sn和token当参数。没填的话就走url那个直链。accept_ranges设成true的时候如果设备之前下载过一半断电了，重启后会用Range请求接着下，设成false就直接删掉重来。
+
+版本号version这个字段你们要注意，如果没传或者为空，设备不会做版本比对直接升级。如果传了且force是false，设备会拿本地版本和服务端版本比，本地大于等于新版就跳过不发ack也不升级。所以测试的时候要么传空version，要么把force设成true，否则容易测不到效果。
+
+设备收到命令后第一件事是回复ack，result=0表示收到开始执行，result=1表示参数有问题直接拒绝。你们要盯着这个ack看，设备回复了ack说明命令解析没问题。
+
+然后设备开始下载，LED灯会变成绿慢闪，这个阶段在从HTTP下载固件到spiffs临时文件。下载过程中如果网络断了会保留部分文件，下次恢复后继续下。下载完会校验size和md5，过了就进入绿快闪阶段，开始刷写OTA分区，这个过程中绝对不能断电，刷完调用esp_restart重启。
+
+重启后设备会走回滚检查逻辑，启动后的前30秒叫验证期，这期间如果IMU和蓝牙都初始化成功了就标记这次升级有效，超过30秒就算自检没过也会强制标记，防止变砖。如果新固件有bug导致不断重启，连续启动超过3次就会自动切回上一个分区恢复。所以测试时可以故意写个会让启动崩溃的固件，验证回滚是否正常触发。
+
+还有一个夜间静默升级的逻辑，你们不用管这个，那是设备自己判断睡眠窗口和电量后主动检查的，测试时直接发命令最稳。
+
+测试清单我帮你们列一下。
+
+第一条，正常升级流程。发一条force=true的ota_update命令，url指向一个已知可用的固件，记录设备是否回复ack=0，LED是否绿慢闪，下载完后是否绿快闪，最后是否重启并进入新版本。
+
+第二条，版本比对跳过。先发一条force=false且version低于当前固件版本的命令，设备应该回复ack=0但日志里打OTA skipped，LED不会亮，固件不变。
+
+第三条，断电续传。在设备绿慢闪下载阶段拔掉电源，等它恢复后重新触发升级，应该能接续之前的进度而不是从头下，spiffs里会残留部分文件。
+
+第四条，md5校验失败。构造一个md5不对的命令发过去，设备下载完成后校验会失败，LED红闪3次，分区不会被刷写，固件保持原样。
+
+第五条，回滚机制。刷入一个会让bootloop的固件，连续重启3次以上，观察日志是否出现Max boots exceeded rolling back，重启后应该切回旧分区正常启动。
+
+第六条，电量门槛。模拟低电量状态让设备电池百分比低于OTA_MIN_BATTERY_PERCENT，发升级命令应该直接返回false并LED红闪，日志显示Battery too low update blocked。
+
+第七条，URL非法。发一个不以http或https开头的url，设备应该回复ack=1，日志打Invalid OTA URL，不执行任何操作。
+
+第八条，download_url断点续传路径。用带download_url的命令，确认设备请求的是断点续传接口而不是直链，且token和sn参数拼到了URL里。
+
+服务器端你们主要关注三点，一是命令下发时机，设备必须已经连上WS且处于在线状态才能收到，二是要盯着ack回复，result=0才是成功接收，result=1说明参数错了要排查，三是版本比对逻辑在设备侧，服务端只要保证version字段和实际固件版本一致就行，不用自己做比对。
+
+---
+
+网关进度驱动重推（ota_progress）
+
+设备可上行：
+{"type":"ota_progress","stage":"download|verify|flash|result","done":整数,"total":整数,"note":"可选"}
+
+note 非空时取值：interrupted / retry / verify_failed / flash_failed / failed。
+
+网关策略（重复推 ota_update 安全）：
+1. stage=result 且 note=failed → 立刻再推一条（背靠背）。
+2. 仅 download 期跟踪单调 done；若本轮 done 未涨 → 约 10s 内重推。
+3. 兜底固定约 40s：download 且 done 仍未涨则再推。
+4. stage=verify / flash → **禁止重推**（刷写中绝不能打扰），等 boot 或 result=failed。
+5. 每次推后看 ack：result=0 正常继续；result=1 在 download 等 10s 再推，在 verify/flash 则暂停；30s 无回执当丢直接重推。
+6. 最终成功仍以重启后 boot=1 ping 的 fw 比对落定。

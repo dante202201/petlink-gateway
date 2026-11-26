@@ -1,0 +1,45 @@
+CREATE TABLE `a_emb_translate` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int DEFAULT NULL COMMENT '用户id',
+  `emb_id` int DEFAULT NULL COMMENT '设备id',
+  `emb_sn` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL COMMENT '序列号',
+  `origin_audio_url` varchar(512) DEFAULT NULL,
+  `audio_url` varchar(512) DEFAULT NULL,
+  `translate_text` text,
+  `origin_audio_duration` varchar(10) DEFAULT NULL COMMENT '原始音频时长',
+  `createtime` int DEFAULT NULL COMMENT '创建时间',
+  `resulttime` int DEFAULT NULL COMMENT '结果时间',
+  `pet_type` varchar(50) DEFAULT NULL COMMENT '宠物类型',
+  `ai_result` text COMMENT 'ai结果',
+  `feedback_type` tinyint(1) DEFAULT NULL COMMENT '1赞 2踩',
+  `feedback_emotion_type` smallint DEFAULT NULL COMMENT '反馈的情绪类型',
+  `pid` varchar(128) DEFAULT NULL,
+  `status` varchar(16) NOT NULL DEFAULT 'ok',
+  `error_msg` varchar(512) DEFAULT NULL,
+  `device_ts` bigint NOT NULL DEFAULT '0',
+  `result_says` varchar(512) DEFAULT NULL,
+  `created_at` int DEFAULT NULL,
+  `result_at` int DEFAULT NULL,
+  `device_opus` mediumblob COMMENT '设备下行裸Opus帧(长度前缀打包)',
+  `device_opus_frames` int DEFAULT NULL COMMENT 'Opus帧数',
+  `origin_raw_url` varchar(512) DEFAULT NULL COMMENT '事件流原帧zip OSS',
+  `origin_raw_frames` int DEFAULT NULL COMMENT '原帧zip内真实帧数',
+  PRIMARY KEY (`id`),
+  KEY `user_id` (`user_id`),
+  KEY `emb_id` (`emb_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+
+CREATE TABLE `a_emb_sn` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `emb_sn` varchar(100) NOT NULL COMMENT '设备序列号',
+  `keysecret` varchar(200) DEFAULT NULL COMMENT '设备侧密钥/激活token（非App登录token）',
+  `bind_user_id` int DEFAULT NULL COMMENT '绑定用户id（由App token在业务侧换出）',
+  `bind_pet_id` varchar(128) DEFAULT NULL COMMENT '宠物档案ID，必须字符串，勿用int',
+  `status` tinyint(1) DEFAULT '1' COMMENT '1正常 0无效/解绑',
+  `bind_at` int DEFAULT NULL COMMENT '最近绑定时间',
+  `created_at` int DEFAULT NULL COMMENT '创建设备记录',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_emb_sn` (`emb_sn`),
+  KEY `idx_bind_user` (`bind_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='嵌入式设备码/绑定表';

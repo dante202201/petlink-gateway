@@ -1,0 +1,188 @@
+# 宠物翻译硬件 WebSocket 网关 — 配置模板
+# 用法：复制为本目录 config.yaml 后按环境填写密钥
+#   cp config/config.example.yaml config/config.yaml
+# config.yaml 已加入 .gitignore，勿把真实密钥提交进仓库
+
+server:
+  # HTTP/WSS 监听地址（生产建议 :443）
+  addr: ":8443"
+  # 宝塔 Nginx 反代时改为 true：本进程只听明文 HTTP，证书由网站 SSL 终结
+  # true 时可不配 cert；反代目标用 http://127.0.0.1:端口，并单独配 location ^~ /ws
+  behind_proxy: false
+  # TLS 证书与私钥路径（behind_proxy: false 时必填；支持热加载）
+  cert_file: "./certs/server.crt"
+  key_file: "./certs/server.key"
+  # 证书热加载检查间隔
+  cert_reload_interval: 30s
+  # WebSocket 升级路径（固件：/ws?sn=&token=）
+  ws_path: "/ws"
+  # 下发给设备的对外可达根地址（activate 返回 server_url = 本值 + ws_path）
+  # 必须是设备能访问的公网 WSS，不要填 127.0.0.1
+  public_base_url: "wss://petlink.example.com"
+
+websocket:
+  # 硬件主动 Ping 间隔（约定 25s）
+  device_ping_interval: 25s
+  # 服务端发出 Ping 后等待 Pong
+  pong_timeout: 20s
+  # 是否主动向设备发 WebSocket Ping。
+  # 当前固件收到服务端 Ping 会立刻 1006 断开，联调务必 false
+  enable_server_ping: false
+  write_timeout: 10s
+  # 读空闲超时；应明显大于 ping 间隔
+  read_timeout: 90s
+  read_buffer_size: 4096
+  write_buffer_size: 4096
+  # 单设备上行 QPS（音频 Text+Binary 算 1；超限只告警放行）
+  max_qps_per_device: 200
+  dedup_window_size: 128
+
+redis:
+  addr: "127.0.0.1:6379"
+  password: "CHANGE_ME"
+  db: 10
+  key_prefix: "petlink:"
+  # 须 > 2*device_ping_interval，心跳会刷新
+  online_ttl: 90s
+  conn_ttl: 90s
+  pool_size: 20
+
+kafka:
+  # false=不连 Kafka，音频/定位只打日志；生产改为 true
+  enabled: false
+  brokers:
+    - "127.0.0.1:9092"
+  topic_audio: "topic_pet_audio"
+  topic_location: "topic_pet_location"
+  timeout: 5s
+
+database:
+  # 设备上行音频/翻译写入 MySQL（与 App 共用：a_emb_sn / a_emb_translate）
+  enabled: true
+  driver: mysql
+  dsn: "user:password@tcp(127.0.0.1:3306)/petapp?charset=utf8mb4&parseTime=true&loc=Local"
+  # 本地免装库可用：
+  # driver: sqlite
+  # dsn: "./data/petlink.db"
+
+# 会话落库：database 开着且 oss.enabled=true 时，首发 end=true 才写 a_emb_translate
+# 完整翻译 AI→百度TTS：需同时 translate.enabled + ai.enabled + baidu.enabled = true
+# 上传 OSS 给 App 播放需本机 ffmpeg（含 libmp3lame、libopus）
+translate:
+  # true = OSS 上传后继续调 AI /translate + 百度 text2audio → Opus 下发设备
+  enabled: true
+  # 合成 OPUS 后是否按 60ms 帧推给在线设备喇叭
+  push_to_device: true
+  ffmpeg_path: "ffmpeg"
+  opus_bitrate: 24000
+  # App 播放格式（设备链路仍 Opus）：mp3 | wav
+  app_audio_format: mp3
+  app_mp3_bitrate: 96000
+  # App 播放建议 44100（16k MP3 易在浏览器越播越快）；设备采集仍 16k
+  app_sample_rate: 44100
+  # file_sample_rate: 16000  # 可选，仅覆盖 kind=1 Ogg 元数据无关
+  # 后处理默认全关（只拼装+转 MP3）
+  # app_denoise: false
+  # app_loudnorm: false
+  # app_highpass: false
+  # app_presence_db: 0
+  # app_makeup_db: 0
+  # app_limiter: false
+  # app_fix_rate: false
+  # app_fix_pitch: false
+  drop_short_enabled: true
+  min_duration_sec: 0.6
+  # min_duration_event_sec: 1  # 事件流最短；0=不过滤。≥1s 才 OSS/翻译入库
+  # 禁止默认开：包间补 PLC 会把叫声切成突突碎片。仅排障可临时 true
+  pace_align_event: false
+  # opus_decode: pion   # pion=连续解码（默认）| ffmpeg=强制 Ogg+libopus（听感 A/B）
+  # 事件流相邻段拼接（设备尾巴约 800ms 数字静音 + 实测间隙窗口）
+  stitch_enabled: true
+  stitch_window_ms: 5000
+  device_seg_silence_ms: 800
+  # TTS 串行队列（设备 type=tts_flow action=pause|resume|level）
+  tts_inter_gap_ms: 500
+  tts_queue_cap: 2
+
+# 设备上行音频双通路（kind=0 事件流 / kind=1 录音文件，互不混拼）
+audio:
+  # 接收：event=仅事件流 | file=仅录音文件 | both=两路都收都存（推荐）
+  accept: both
+  # 识别翻译：event | file | both | none（默认 event，同一声不翻两次）
+  translate: event
+  # accept 了但未进 translate 的通路，end 时是否仍 OSS 归档原音（默认 true）
+  archive_other: true
+
+oss:
+  # true 后 end=true 会转 MP3 上传并写入 a_emb_translate（含 origin_audio_url）
+  enabled: false
+  endpoint: "oss-cn-hangzhou.aliyuncs.com"
+  access_key_id: "YOUR_ACCESS_KEY_ID"
+  access_key_secret: "YOUR_ACCESS_KEY_SECRET"
+  bucket: "your-bucket"
+  # 对外访问域名（可填 CDN）；AI 侧用此 URL 拉取音频，须公网可达
+  public_base: "https://your-bucket.oss-cn-hangzhou.aliyuncs.com"
+  object_prefix: "device/audio"
+
+# 百度短文本语音合成（对齐 Translate.php text2audio）
+# aue: 3=mp3 4=pcm-16k（设备 TTS 强制用 4）5=pcm-8k 6=wav
+baidu:
+  enabled: false
+  client_id: "YOUR_BAIDU_CLIENT_ID"
+  client_secret: "YOUR_BAIDU_CLIENT_SECRET"
+  token_redis_key: "baidu_translate_access_token"
+  per: 0
+  spd: 5
+  pit: 5
+  vol: 5
+  aue: 4
+
+# 宠物 AI 翻译（对齐 Translate.php translateAll）
+# 最终请求：{base_url}:{translate_port}/translate ，multipart: pet_type + audio_url
+ai:
+  enabled: false
+  # 例：http://127.0.0.1 （不要末尾斜杠；端口用下面 translate_port）
+  base_url: "http://127.0.0.1"
+  # 若 base_url 已写死端口可填 0
+  translate_port: 6001
+  timeout: 60s
+
+device:
+  # 激活/刷新时随机 token 字节数（hex 后长度 = 2*token_bytes）
+  token_bytes: 16
+
+# 固件 OTA：可用管理后台上传到 OSS 后自动写本段；也可手改，约 10s 热加载
+firmware:
+  version: ""
+  url: ""
+  force: false
+  size: 0
+  md5: ""
+  changelog: ""
+  # 已忽略。下载接口一律 200/206 代理，不回 302
+  download_mode: "proxy"
+
+# 后台管理：浏览器打开网关 /admin（或本地 Vite http://127.0.0.1:5173/admin）
+admin:
+  enabled: true
+  password: "CHANGE_ME"
+  token_ttl: 24h
+  static_dir: "./web/test-console/dist"
+
+locate:
+  # mock=固定坐标；fingerprint=按 WiFi MAC 指纹缓存，未命中回退 mock
+  provider: "fingerprint"
+  mock_lat: 31.2304
+  mock_lng: 121.4737
+  mock_acc: 50
+  # 指纹缓存 TTL，0=不过期
+  fingerprint_ttl: 720h
+
+log:
+  # info 即可看设备上下行；心跳 Ping/Pong 需 debug
+  level: "info"
+  filename: "./logs/gateway.log"
+  max_size: 100
+  max_backups: 7
+  max_age: 30
+  compress: true
